@@ -12,7 +12,12 @@ import eu.mihosoft.jcsg.STL;
 
 public class CalGui
 {
-	protected static File promptFile(String title, boolean save_open, FileNameExtensionFilter filter)
+	public static File promptFile(String title, boolean save_open, String typeName, String extension)
+	{
+		return promptFile(title, save_open, null == typeName || null == extension?null:new FileNameExtensionFilter(typeName, extension));
+	}
+	
+	public static File promptFile(String title, boolean save_open, FileNameExtensionFilter filter)
 	{
 		JFrame parentFrame = new JFrame();
 		JFileChooser chooser = new JFileChooser();

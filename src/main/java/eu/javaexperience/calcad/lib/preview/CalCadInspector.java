@@ -338,4 +338,9 @@ public class CalCadInspector
 		nav.translate.setX(0);
 		nav.translate.setY(0);
 	}
+
+	public void setTitle(String title)
+	{
+		frame.setTitle(title);
+	}
 }

@@ -56,7 +56,7 @@ public class ReusablePolygonTriangulator
 			ModifiableVector3d pos = v.pos.asModifiable();
 			pos = rot.transform(pos);
 			
-			if(d2points.length +2 < d2ep)
+			if(d2points.length  <= d2ep +2)
 			{
 				d2points = Arrays.copyOf(d2points, d2points.length*2);
 			}

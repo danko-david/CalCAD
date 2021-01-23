@@ -1,26 +1,19 @@
 package eu.javaexperience.calcad.lib;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Semaphore;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
 
 import eu.javaexperience.asserts.AssertArgument;
 import eu.javaexperience.calcad.lib.parallel.ParallelTask;
 import eu.javaexperience.calcad.lib.preview.CalCadInspector;
 import eu.javaexperience.collection.CollectionTools;
 import eu.javaexperience.collection.list.NullList;
-import eu.javaexperience.collection.set.OneShotList;
-import eu.javaexperience.document.DocumentTools;
-import eu.javaexperience.functional.BoolFunctions;
-import eu.javaexperience.interfaces.simple.getBy.GetBy1;
 import eu.javaexperience.log.JavaExperienceLoggingFacility;
 import eu.javaexperience.log.LogLevel;
 import eu.javaexperience.log.Loggable;
@@ -28,7 +21,6 @@ import eu.javaexperience.log.Logger;
 import eu.javaexperience.log.LoggingTools;
 import eu.javaexperience.multithread.TaskExecutorPool;
 import eu.javaexperience.reflect.Mirror;
-import eu.javaexperience.semantic.references.MayNull;
 import eu.mihosoft.jcsg.CSG;
 import eu.mihosoft.jcsg.Cube;
 import eu.mihosoft.jcsg.Cylinder;
@@ -46,6 +38,8 @@ public class Cal
 	
 /* ***************** Static default, user overwriteable variables *************/
 	public static int FACETS = 32;
+	
+	public static final CSG CSG_EMPTY = CSG.fromPolygons(new NullList<>());
 
 //Multithreading stuffs
 	protected static TaskExecutorPool THREAD_POOL = new TaskExecutorPool()
@@ -65,7 +59,6 @@ public class Cal
 	protected static int PARALLELISM = Runtime.getRuntime().availableProcessors()-1;
 	protected static Semaphore PARALLEL_CALC_SEMAPHORE = new Semaphore(PARALLELISM);
 	
-	//TODO test negative amount of semaphore release
 	public static void setParallelism(int parallel)
 	{
 		AssertArgument.assertGreaterOrEqualsThan(parallel, 1, "parallelism");
@@ -106,7 +99,34 @@ public class Cal
 	
 /* ************************** Mathematical primitives *************************/
 	
+	/**
+	 * Adds the vertex to the specified destination collection if it isn't present yet.
+	 * */
+	public static boolean addVertexUnique(Collection<Vertex> dst, Vertex v)
+	{
+		for(Vertex dv:dst)
+		{
+			if(equals(dv.pos, v.pos))
+			{
+				return false;
+			}
+		}
+		dst.add(v);
+		return true;
+	}
 	
+	public static boolean contains(List<Vertex> vxs, Vertex vx)
+	{
+		for(Vertex v:vxs)
+		{
+			if(Cal.equals(vx.pos, v.pos))
+			{
+				return true;
+			}
+		}
+		
+		return false;
+	}
 	
 /* ********************** Object generator functions *************************/
 
@@ -148,6 +168,16 @@ public class Cal
 	//TODO text
 	
 	
+	public static Polygon polygonZ(double... xy)
+	{
+		ArrayList<Vertex> vs = new ArrayList<>();
+		for(int i=0;i<xy.length;i+=2)
+		{
+			vs.add(new Vertex(Vector3d.xyz(xy[i], xy[i+1], 0), Vector3d.Z_ONE));
+		}
+		
+		return new Polygon(vs);
+	}
 	
 /* ***************************** Transformations ******************************/
 
@@ -180,10 +210,27 @@ public class Cal
 		Transform t = new Transform();
 		for(Transform tr:transforms)
 		{
-			t.apply(tr);
+			if(null != tr)
+			{
+				t.apply(tr);
+			}
 		}
 		return t;
 	}
+	
+	public static CSG transform(CSG csg, Transform... transforms)
+	{
+		return csg.transformed(combine(transforms));
+	}
+	
+	/*
+	Matrices are hidden in Transform class. 
+	S_O_LID sucks.  
+	public static Transform invert(Transform t)
+	{
+
+	}*/
+	
 /* ******************************** Operations ********************************/
 //helper functions
 	protected static CSG tryGetFirstOrMakeEmpty(CSG[] arr)
@@ -351,6 +398,54 @@ public class Cal
 	
 /* ****************************** Measurements ********************************/
 	
+	public static AxisBoundingBox getBoundBox(CSG obj)
+	{
+		double minX = Double.MAX_VALUE;
+		double minY = Double.MAX_VALUE;
+		double minZ = Double.MAX_VALUE;
+		
+		double maxX = -Double.MAX_VALUE;
+		double maxY = -Double.MAX_VALUE;
+		double maxZ = -Double.MAX_VALUE;
+		
+		for(Polygon p:obj.getPolygons())
+		{
+			for(Vertex v:p.vertices)
+			{
+				if(minX > v.pos.x())
+				{
+					minX = v.pos.x();
+				}
+				
+				if(minY > v.pos.y())
+				{
+					minY = v.pos.y();
+				}
+				
+				if(minZ > v.pos.z())
+				{
+					minZ = v.pos.z();
+				}
+				
+				if(maxX < v.pos.x())
+				{
+					maxX = v.pos.x();
+				}
+				
+				if(maxY < v.pos.y())
+				{
+					maxY = v.pos.y();
+				}
+				
+				if(maxZ < v.pos.z())
+				{
+					maxZ = v.pos.z();
+				}
+			}
+		}
+		
+		return new AxisBoundingBox(minX, minY, minZ, maxX, maxY, maxZ);
+	}
 	
 /* *************************** Utility functions ******************************/
 /*	public static CSG optimize(CSG object)
@@ -359,46 +454,15 @@ public class Cal
 		return object;
 	}
 */
-/* **************************** Import functions ******************************/
 	
-	public static CSG importSvgPolygon(String file, @MayNull String id)
+/* **************************** equals functions ******************************/
+	
+	public static boolean equals(Vector3d a, Vector3d b)
 	{
-		try(FileInputStream fis = new FileInputStream(file))
-		{
-			Document doc = DocumentTools.parseDocument(fis);
-			GetBy1<Boolean, Node> sel = DocumentTools.selectNodesByTagName("polygon");
-			if(null != id)
-			{
-				sel = BoolFunctions.and(sel, DocumentTools.selectNodesByAttributeValue("id", id));
-			}
-			
-			Node el = DocumentTools.findFirst(doc, sel);
-			if(null == el)
-			{
-				throw new RuntimeException("Polygon not found");
-			}
-			
-			Node ps = DocumentTools.getAttr(el, "points");
-			if(null == ps)
-			{
-				throw new RuntimeException("No points found in the polygon object");
-			}
-			
-			List<Vertex> vs = new ArrayList<>();
-			for(String p:ps.getNodeValue().split("\\s+"))
-			{
-				String[] cc = p.split(",");
-				vs.add(new Vertex(Vector3d.xyz(Double.parseDouble(cc[0]), Double.parseDouble(cc[1]), 0), Vector3d.Z_ONE));
-			}
-			
-			return CSG.fromPolygons(new OneShotList<Polygon>(new Polygon(vs)));
-		}
-		catch(Exception e)
-		{
-			Mirror.propagateAnyway(e);
-		}
-		return null;
+		return a.x() == b.x() && a.y() == b.y() && a.z() == b.z();
 	}
+	
+/* **************************** Import functions ******************************/
 	
 	
 /* ****************************** View functions ******************************/
